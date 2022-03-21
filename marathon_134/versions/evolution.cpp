@@ -7,19 +7,16 @@
 
 using namespace std;
 
-//ofstream qf; 
-
-int N, C;
+ofstream qf; int N, C;
 static const int dx[] = {1, 0, -1, 0, 0};
 static const int dy[] = {0, 1, 0, -1, 0};
 static const char dir[] = {'R', 'D', 'L', 'U', 'N'}; 
 
-static const double growthP = 0.05;
+static const double growthP = 0.07;
 static const int K = 3;
 
-int population_size, max_depth, randP;
-
-double lambda[4] = {32., 1.75, 1.25, 1.};
+static const int population_size = 20;
+static const int max_depth = 10;
 
 default_random_engine generator;
 uniform_real_distribution<double> distribution(0.0,1.0);
@@ -60,128 +57,18 @@ vector<ind> parents;
 vector<ind> children;
 
 // A* to go home?
-
-// ####################### Greedy #############################
-
-// Returns the best move to make a farmer go to a give position
-char goPos(int i, int x, int y) 
-{
-    char move = 'N';
-
-    int bestDist = N * N;
-    for (int j=0;j<4;j++)
-    {
-        int nx = farmers[i].x + dx[j];
-        int ny = farmers[i].y + dy[j];
-        int dist = abs(x-nx) + abs(y-ny);
-        if (dist<bestDist && nx>=0 && nx<N && ny>=0 && ny<N && grid[nx][ny]!='#')
-        {
-            move = dir[j];
-            bestDist = dist;
-        } else if (dist ==  bestDist && nx >= 0 && nx < N && ny >= 0 && ny < N && grid[nx][ny] != '#' && rand() % 2 == 0)
-        {
-            move = dir[j];
-            bestDist = dist;
-        }
-    }
-
-    return move;
-}
-
-// Find the nearest sheep from the farmer
-sheep findNearestSheep(int i)
-{
-    int best_index = 0;
-    int best_dist = 100000;
-
-    for(int k = 0; k < sheeps.size(); k++)
-    {
-        int x = sheeps[k].x;
-        int y = sheeps[k].y;
-
-        int dist = abs(x - farmers[i].x) + abs(y - farmers[i].y);
-        if(dist < best_dist && sheeps[k].wool > 0)
-        {
-            best_index = k;
-            best_dist = dist;
-        } else if (dist == best_dist && sheeps[k].wool > 0 && rand() % 2 == 0)
-        {
-            best_index = k;
-            best_dist = dist;
-        }
-    }
-
-    return sheeps[best_index];
-}
-
-// Find the nearest brane from the farmer
-brane findNearestBrane(int i)
-{
-    int best_index = 0;
-    int best_dist = 100000;
-
-    for(int k = 0; k < branes.size(); k++)
-    {
-        int x = branes[k].x;
-        int y = branes[k].y;
-
-        int dist = abs(x - farmers[i].x) + abs(y - farmers[i].y);
-        if(dist < best_dist)
-        {
-            best_index = k;
-            best_dist = dist;
-        } else if (dist == best_dist && rand() % 2 == 0)
-        {
-            best_index = k;
-            best_dist = dist;
-        }
-    }
-
-    return branes[best_index];
-}
-
-void makeGreedyMoves()
-{
-    stringstream ss;
-
-    for (int i = 0; i < farmers.size(); i++)
-    {
-        ss << farmers[i].y << " " << farmers[i].x << " "; 
-        if (farmers[i].space == 0)
-        {
-            brane b = findNearestBrane(i);
-            ss << goPos(i, b.x, b.y) << " ";     
-        } else
-        {
-            sheep s = findNearestSheep(i);
-            ss << goPos(i, s.x, s.y) << " ";
-        }
-    }
-
-    cout << ss.str() << endl;
-    cout.flush();
-}
-
-// ####################### Evolutionary approach #######################
-
 double distanceNearestBrane(int x, int y)
 {
     double dist = double(N * N);
 
     for(int k = 0; k < branes.size(); k++)
     {
-        double d = double(abs(x - branes[k].x) + abs(y - branes[k].y));
+        double d = abs(x - branes[k].x) + abs(y - branes[k].y);
         if(d < dist)
             dist = d;
     }
     
     return dist;
-}
-
-double distanceSheep(int x, int y, int j, ind a)
-{
-
-    return lambda[a.g[a.s[j].x][a.s[j].y] - 'A'] * double(abs(x - a.s[j].x) + abs(y - a.s[j].y));
 }
 
 double score(ind a)
@@ -192,8 +79,7 @@ double score(ind a)
     {
         double need_home = double(C - a.f[i].space) / double(C);
         need_home = need_home * need_home * need_home;
-
-        s -=  0.25 * need_home * distanceNearestBrane(a.f[i].x, a.f[i].y);
+        s -=  need_home * distanceNearestBrane(a.f[i].x, a.f[i].y);
     }
 
     return s;
@@ -213,8 +99,7 @@ vector<int> validMoves(int x, int y, vector<vector<char>> g)
         }
     }
 
-    if(moves.size() == 0)
-        moves.push_back(4);
+    moves.push_back(4);
 
     return moves;
 }
@@ -226,11 +111,104 @@ int randomSheepMove(int i, ind a)
     return moves[rand() % moves.size()];
 }
 
-int randomMove(int i, ind a)
+int randomMove(vector<int> moves, vector<double> p)
+{
+    double num = distribution(generator);
+    int n = moves.size();
+
+    for(int i = 0; i < n; i++)
+        if(num <= p[i])
+            return moves[i];
+    
+    return moves[n - 1];
+}
+
+double closeness(int x1, int y1, int x2, int y2)
+{
+    double dist = double(abs(x1 - x2) + abs(y1 - y2));
+    return 100. / (dist * dist);
+}
+
+vector<double> heuristic(int index, ind a, vector<int> moves)
+{
+    farmer f = a.f[index];
+    // Go towards a sheeps with wool but try keep close to home
+
+    // As more close to full more probability to go home
+    double need_home = double(C - f.space) / double(C);
+    need_home *= need_home;
+
+    int n = moves.size();
+    vector<double> p (n, 0.0);
+
+    double total = 0.;
+    for(int k = 0; k < n; k++)
+    {
+        int nx = f.x + dx[moves[k]];
+        int ny = f.y + dy[moves[k]];
+
+        if(a.g[nx][ny] == 'X')
+        {
+            nx = f.x;
+            ny = f.y;
+            p[k] += 300. * need_home;
+        }
+
+        if(a.g[nx][ny] > 'A' && a.g[nx][ny] <= 'D')
+        {
+            p[k] += 200. * double(a.g[nx][ny] - 'A') * (1 - need_home);
+            nx = f.x;
+            ny = f.y;
+        }
+
+        // Sheeps
+        for(int i = 0; i < a.s.size(); i++)
+        {
+            p[k] += max((1. - need_home) * (double(a.s[i].wool) / 3.) * closeness(nx, ny, a.s[i].x, a.s[i].y), 0.);
+        }
+
+        // Home
+        for(int i = 0; i < branes.size(); i++)
+        {
+            p[k] += max(need_home * closeness(nx, ny, branes[k].x, branes[k].y), 0.);
+        }
+
+        // Farmers
+        for(int i = 0; i < a.f.size(); i++)
+        {
+            if(i == index)
+                continue;
+
+            p[k] -= max(0.25 * (1. - need_home) * closeness(nx, ny, a.f[i].x, a.f[i].y), 0.);
+        }
+
+        if(moves[k] == 4)
+            p[k] *= 0.5;
+
+        p[k] = max(p[k], 0.0);
+        total += p[k];
+    }
+
+    /*
+    qf << "Probability:" << endl;
+    for(int k = 0; k < n; k++)
+        qf << dir[moves[k]] << " " << p[k] << endl;
+    qf << endl;
+    */
+
+    // Normalize the probability vector
+    for(int k = 0; k < n; k++)
+        p[k] /= total;
+
+    return p;
+}
+
+int getMove(int i, ind a)
 {
     vector<int> moves = validMoves(a.f[i].x, a.f[i].y, a.g);
+    vector<double> p = heuristic(i, a, moves);
 
-    return moves[rand() % moves.size()];
+    return randomMove(moves, p);
 }
 
 int greedy(int i, ind a)
@@ -239,8 +217,8 @@ int greedy(int i, ind a)
 
     if(a.f[i].space == 0)
     {
-        int best_index = 0;
-        double best = double(N * N * N);
+        int best_index = 4;
+        int best = N * N * N;
 
         for(int k = 0; k < moves.size(); k++)
         {
@@ -264,8 +242,8 @@ int greedy(int i, ind a)
         return moves[best_index];
     }
 
-    int best_index = 0;
-    double best = double(N * N * N);
+    int best_index = 4;
+    int best = N * N * N;
 
     for(int k = 0; k < moves.size(); k++)
     {
@@ -280,10 +258,9 @@ int greedy(int i, ind a)
 
         for(int j = 0; j < a.s.size(); j++)
         {
-            double dist = distanceSheep(nx, ny, j, a);
-            if(dist <= best)
+            if(abs(nx - a.s[j].x) + abs(ny - a.s[j].y) <= best)
             {
-                best = dist;
+                best = abs(nx - a.s[j].x) + abs(ny - a.s[j].y);
                 best_index = k;
             }
         }
@@ -292,15 +269,7 @@ int greedy(int i, ind a)
     return moves[best_index];
 }
 
-int getMove(int i, ind a)
-{
-    if(rand() % 100 < randP)
-        return randomMove(i, a);
-
-    return greedy(i, a);
-}
-
-ind simulate(ind ori)
+ind simulate(ind ori, bool greed)
 {
     ind a = ori;
     a.d++;
@@ -308,13 +277,19 @@ ind simulate(ind ori)
     // Farmers
     for(int i = 0; i < a.f.size(); i++)
     {
+        int move = 4;
         // Choose a move
-        int move = getMove(i, a);
+        if(greed)
+        {
+            qf << "####   " << a.f[i].x << " " << a.f[i].y << endl;
+            move = greedy(i, a);
+            qf << move << endl;
+        } else 
+        {
+            move = getMove(i, a);
+        }
 
         a.f[i].move.push_back(move);
-
-        if(a.d == max_depth)
-            continue;
         
         int nx = a.f[i].x + dx[move];
         int ny = a.f[i].y + dy[move];
@@ -340,7 +315,7 @@ ind simulate(ind ori)
     }
 
     // Sheeps
-    for(int i = 0; i < a.s.size() && a.d < max_depth; i++)
+    for(int i = 0; i < a.s.size(); i++)
     {
         int x = a.s[i].x;
         int y = a.s[i].y;
@@ -352,7 +327,7 @@ ind simulate(ind ori)
         // Make wool grow
         if(a.g[x][y] >= 'A' && a.g[x][y] < 'D')
         {
-            double num = 1;//distribution(generator);
+            double num = distribution(generator);
             if(num <= growthP)
                 a.g[x][y]++;
         }
@@ -440,15 +415,16 @@ void makemoves()
     }
 
     // Simulate each individual
-    for(int k = 0; k < population_size; k++)
+    population[0] = simulate(population[0], true);
+    for(int k = 1; k < population_size; k++)
         while(population[k].d < max_depth)
-            population[k] = simulate(population[k]);
+            population[k] = simulate(population[k], false);
     
     // Pick best
     ind best = population[0];
-    double max_score = score(population[0]);
+    double max_score = -1;
 
-    for(int k = 1; k < population_size; k++)
+    for(int k = 0; k < population_size; k++)
     {
         double s = score(population[k]);
         if(s >= max_score)
@@ -457,12 +433,6 @@ void makemoves()
             max_score = s;
         }
     }
-
-    /*
-    print_individual(best);
-    qf << farmers[0].y << " " << farmers[0].x << " "; 
-    qf << dir[best.f[0].move[0]] << " " << endl;
-    */
 
     for (int i = 0; i < farmers.size(); i++)
     {
@@ -476,9 +446,16 @@ void makemoves()
 
 void readgrid()
 {
+    grid.clear();
     branes.clear();
     farmers.clear();
     sheeps.clear();
+
+    for(int i = 0; i < N; i++)
+    {
+        vector<char> g (N);
+        grid.push_back(g);
+    }
 
     for (int y=0;y<N;y++)
     {
@@ -522,40 +499,23 @@ int main()
 {
     srand(time(NULL));
 
-    //qf.open("logs.txt");
+    qf.open("logs.txt");
 
     cin >> N >> C;
 
-    population_size = (10 * (1 + int(20 - (2 * int(log2(double(N * N))))))) / 7;
-    max_depth = (10 * (1 + int(20 - (2 * int(log2(double(N * N))))))) / 7;
-
-    randP = max(2, ((population_size * max_depth) / 6));
-
-    for(int i = 0; i < N; i++)
-    {
-        vector<char> g (N, '.');
-        grid.push_back(g);
-    }
-    
     readgrid();
     makemoves();
 
     for (int i=0;i<1000;i++)
     {
-        //qf << "### " << i << " ###" << endl;
+        qf << "### " << i << " ###" << endl;
         int tm;
         cin >> tm;
         readgrid();
-        if(tm > 9800)
-        {
-            makeGreedyMoves();
-        } else
-        {
-            makemoves();    
-        }
+        makemoves();    
     }
 
-    //qf.close();
+    qf.close();
 
     return 0;
 }
